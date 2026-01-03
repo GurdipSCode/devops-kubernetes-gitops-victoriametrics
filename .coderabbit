@@ -1,0 +1,294 @@
+# =============================================================================
+# CodeRabbit Configuration for ArgoCD GitOps Repositories
+# https://docs.coderabbit.ai/configuration
+# =============================================================================
+
+language: en-US
+
+# =============================================================================
+# REVIEW SETTINGS
+# =============================================================================
+reviews:
+  # Enable auto-review on PRs
+  auto_review:
+    enabled: true
+    # Ignore drafts
+    drafts: false
+    # Base branch patterns to review
+    base_branches:
+      - main
+      - master
+      - develop
+      - release/*
+
+  # Review profile - chill is less nitpicky
+  profile: chill
+
+  # Request changes vs comments
+  request_changes_workflow: false
+
+  # High-level summary
+  high_level_summary: true
+  high_level_summary_placeholder: "@coderabbitai summary"
+
+  # Poem in review (fun touch)
+  poem: false
+
+  # Review status in PR
+  review_status: true
+
+  # Collapse walkthrough after certain length
+  collapse_walkthrough: true
+
+  # Path-based instructions for reviewers
+  path_instructions:
+    # ArgoCD Applications
+    - path: "**/Application.yaml"
+      instructions: |
+        Review ArgoCD Application manifests for:
+        - Correct destination cluster and namespace
+        - Sync policy configuration (automated, selfHeal, prune)
+        - Source repository URL and path accuracy
+        - Health checks and sync waves if applicable
+        - Resource finalizers for proper cleanup
+
+    - path: "**/ApplicationSet.yaml"
+      instructions: |
+        Review ArgoCD ApplicationSet for:
+        - Generator configuration (list, cluster, git, matrix)
+        - Template correctness
+        - Sync policy inheritance
+        - Label selectors
+
+    # Helm values
+    - path: "**/values.yaml"
+      instructions: |
+        Review Helm values for:
+        - Security: No hardcoded secrets, passwords, or tokens
+        - Resource limits and requests are set
+        - Image tags are pinned (not 'latest')
+        - Environment-specific values are appropriate
+        - Comments explain non-obvious configurations
+
+    - path: "**/values-*.yaml"
+      instructions: |
+        Review environment-specific values for:
+        - Appropriate resource sizing for environment
+        - Correct endpoints and URLs
+        - No production secrets in non-prod configs
+        - Feature flags appropriate for environment
+
+    # Kustomize
+    - path: "**/kustomization.yaml"
+      instructions: |
+        Review Kustomize configuration for:
+        - Resources are listed and exist
+        - Patches are valid JSON patches or strategic merge
+        - ConfigMap/Secret generators don't contain sensitive data
+        - Common labels and annotations are appropriate
+        - Namespace is set correctly
+
+    # Kubernetes manifests
+    - path: "**/*.yaml"
+      instructions: |
+        Review Kubernetes manifests for:
+        - API version is not deprecated
+        - Resource limits and requests are defined
+        - Security context is appropriate
+        - Labels include app, component, version
+        - No hardcoded secrets or sensitive data
+        - Namespace is explicitly set
+        - Probes (liveness, readiness) are configured
+
+    # Alert rules
+    - path: "**/alert-rules/**"
+      instructions: |
+        Review Prometheus/VictoriaMetrics alert rules for:
+        - PromQL syntax correctness
+        - Appropriate 'for' duration (not too short/long)
+        - Severity labels are set (critical, warning, info)
+        - Annotations include summary and description
+        - No duplicate alert names
+        - Thresholds are reasonable
+
+    - path: "**/*-rules.yaml"
+      instructions: |
+        Review alert rules for:
+        - Valid PromQL expressions
+        - Appropriate evaluation intervals
+        - Meaningful alert names
+        - Runbook URLs if applicable
+
+    # Tests
+    - path: "**/tests/**"
+      instructions: |
+        Review test files for:
+        - Test coverage of alert conditions
+        - Both positive and negative test cases
+        - Realistic time series data
+        - Correct eval_time for 'for' duration
+
+    # Playbooks (Robusta)
+    - path: "**/playbooks/**"
+      instructions: |
+        Review Robusta playbooks for:
+        - Trigger conditions match alert names
+        - Actions are appropriate for the alert type
+        - No overly aggressive auto-remediation
+        - Resource enrichers match the alert context
+
+    # Sinks (Robusta)
+    - path: "**/sinks/**"
+      instructions: |
+        Review notification sinks for:
+        - No hardcoded API keys or tokens
+        - Environment variables used for secrets
+        - Appropriate channel/destination routing
+        - Severity-based filtering is logical
+
+    # Secrets (should not exist, but catch if they do)
+    - path: "**/*secret*.yaml"
+      instructions: |
+        ⚠️ SECRET FILE DETECTED
+        - Verify this is a SealedSecret or ExternalSecret
+        - Ensure no plaintext sensitive data
+        - Check if this should be in .gitignore
+        - Recommend using external secrets management
+
+    # ConfigMaps
+    - path: "**/configmap*.yaml"
+      instructions: |
+        Review ConfigMaps for:
+        - No sensitive data (use Secrets instead)
+        - Reasonable data sizes
+        - Proper key naming conventions
+
+    # RBAC
+    - path: "**/role*.yaml"
+      instructions: |
+        Review RBAC for:
+        - Principle of least privilege
+        - No cluster-admin bindings unless justified
+        - Verbs are minimal required set
+        - Resources are scoped appropriately
+
+    - path: "**/clusterrole*.yaml"
+      instructions: |
+        Review ClusterRole for:
+        - Justification for cluster-wide permissions
+        - No wildcard (*) resources or verbs unless necessary
+        - Aggregation labels if applicable
+
+    # Network Policies
+    - path: "**/networkpolicy*.yaml"
+      instructions: |
+        Review NetworkPolicy for:
+        - Default deny is considered
+        - Ingress/egress rules are specific
+        - Pod selectors are correct
+        - Ports are explicitly defined
+
+    # Overlays
+    - path: "**/overlays/**"
+      instructions: |
+        Review environment overlays for:
+        - Appropriate differences from base
+        - No secrets in overlay patches
+        - Resource adjustments match environment
+        - Namespace correctness
+
+# =============================================================================
+# CHAT SETTINGS
+# =============================================================================
+chat:
+  # Enable chat in PR comments
+  auto_reply: true
+
+# =============================================================================
+# KNOWLEDGE BASE
+# =============================================================================
+knowledge_base:
+  # Learn from merged PRs
+  learnings:
+    scope: auto
+
+  # Issues to consider
+  issues:
+    scope: auto
+
+# =============================================================================
+# CUSTOM REVIEW INSTRUCTIONS
+# =============================================================================
+custom_instructions: |
+  This is an ArgoCD GitOps repository for Kubernetes deployments.
+  
+  Key review priorities:
+  1. **Security**: Never approve PRs with hardcoded secrets, tokens, or passwords
+  2. **GitOps principles**: Changes should be declarative and version-controlled
+  3. **Resource safety**: Verify resource limits, PDB, and pod disruption configs
+  4. **Sync safety**: Check sync policies won't cause unintended deletions
+  
+  ArgoCD-specific checks:
+  - Applications should have proper sync policies
+  - Automated sync should have selfHeal and prune carefully considered
+  - Finalizers should be present for proper resource cleanup
+  - Health checks should be appropriate for the application type
+  
+  Alert rules checks:
+  - PromQL must be syntactically valid
+  - Alert thresholds should be reasonable
+  - 'for' duration should prevent flapping
+  - Severity should match impact
+  
+  Kubernetes best practices:
+  - All Deployments should have resource limits
+  - Production workloads should have PodDisruptionBudgets
+  - Images should use digests or pinned tags, never 'latest'
+  - Namespaces should be explicit, not defaulted
+
+# =============================================================================
+# IGNORE PATTERNS
+# =============================================================================
+ignore:
+  # Files to skip reviewing
+  files:
+    - "**/*.md"
+    - "**/LICENSE"
+    - "**/.gitignore"
+    - "**/CODEOWNERS"
+    - "**/*.example"
+    - "**/Chart.lock"
+    
+  # Paths to skip
+  paths:
+    - "docs/**"
+    - ".github/ISSUE_TEMPLATE/**"
+    
+  # Don't review auto-generated files
+  auto_generated_files: true
+
+# =============================================================================
+# LABELS
+# =============================================================================
+labels:
+  # Label PRs based on paths
+  path_labels:
+    - path: "**/alert-rules/**"
+      label: "alerting"
+    - path: "**/playbooks/**"
+      label: "robusta"
+    - path: "**/overlays/prod/**"
+      label: "production"
+    - path: "**/overlays/dev/**"
+      label: "development"
+    - path: "**/base/**"
+      label: "base-config"
+    - path: "**/values*.yaml"
+      label: "helm"
+    - path: "**/kustomization.yaml"
+      label: "kustomize"
+
+# =============================================================================
+# EARLY ACCESS FEATURES
+# =============================================================================
+early_access: true
