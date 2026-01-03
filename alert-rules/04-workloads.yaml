@@ -1,0 +1,167 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: k3s-workloads
+  namespace: victoria-metrics
+  labels:
+    app: vmalert
+spec:
+  groups:
+    - name: k3s-workloads
+      interval: 30s
+      rules:
+        # 51
+        - alert: DeploymentReplicasMismatch
+          expr: kube_deployment_spec_replicas != kube_deployment_status_replicas_available
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} replica mismatch"
+            description: "Deployment has {{ $value }} available replicas vs desired"
+
+        # 52
+        - alert: DeploymentGenerationMismatch
+          expr: kube_deployment_status_observed_generation != kube_deployment_metadata_generation
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} generation mismatch"
+            description: "Deployment rollout may be stuck"
+
+        # 53
+        - alert: DeploymentRolloutStuck
+          expr: kube_deployment_status_condition{condition="Progressing",status="false"} == 1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} rollout stuck"
+            description: "Deployment rollout has not progressed for 15 minutes"
+
+        # 54
+        - alert: DeploymentNoAvailableReplicas
+          expr: |
+            kube_deployment_status_replicas_available == 0
+            and kube_deployment_spec_replicas > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} has no available replicas"
+            description: "All replicas are unavailable"
+
+        # 55
+        - alert: StatefulSetReplicasMismatch
+          expr: kube_statefulset_status_replicas_ready != kube_statefulset_status_replicas
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "StatefulSet {{ $labels.namespace }}/{{ $labels.statefulset }} replica mismatch"
+            description: "StatefulSet has {{ $value }} ready replicas vs current"
+
+        # 56
+        - alert: StatefulSetGenerationMismatch
+          expr: kube_statefulset_status_observed_generation != kube_statefulset_metadata_generation
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "StatefulSet {{ $labels.namespace }}/{{ $labels.statefulset }} generation mismatch"
+            description: "StatefulSet rollout may be stuck"
+
+        # 57
+        - alert: DaemonSetRolloutStuck
+          expr: |
+            kube_daemonset_status_number_ready / kube_daemonset_status_desired_number_scheduled * 100 < 100
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "DaemonSet {{ $labels.namespace }}/{{ $labels.daemonset }} rollout stuck"
+            description: "Only {{ $value | printf \"%.1f\" }}% of desired pods are ready"
+
+        # 58
+        - alert: DaemonSetNotScheduled
+          expr: |
+            kube_daemonset_status_desired_number_scheduled - kube_daemonset_status_current_number_scheduled > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "DaemonSet {{ $labels.namespace }}/{{ $labels.daemonset }} not fully scheduled"
+            description: "{{ $value }} pods are not scheduled"
+
+        # 59
+        - alert: DaemonSetMisscheduled
+          expr: kube_daemonset_status_number_misscheduled > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "DaemonSet {{ $labels.namespace }}/{{ $labels.daemonset }} has misscheduled pods"
+            description: "{{ $value }} pods are misscheduled"
+
+        # 60
+        - alert: ReplicaSetReplicasMismatch
+          expr: kube_replicaset_spec_replicas != kube_replicaset_status_ready_replicas
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "ReplicaSet {{ $labels.namespace }}/{{ $labels.replicaset }} replica mismatch"
+            description: "ReplicaSet has {{ $value }} ready replicas vs desired"
+
+        # 61
+        - alert: JobFailed
+          expr: kube_job_status_failed > 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Job {{ $labels.namespace }}/{{ $labels.job_name }} failed"
+            description: "Job has {{ $value }} failed executions"
+
+        # 62
+        - alert: JobSlowCompletion
+          expr: |
+            kube_job_spec_completions - kube_job_status_succeeded > 0
+            and (time() - kube_job_status_start_time) > 3600
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Job {{ $labels.namespace }}/{{ $labels.job_name }} running too long"
+            description: "Job has been running for more than 1 hour"
+
+        # 63
+        - alert: CronJobSuspended
+          expr: kube_cronjob_spec_suspend == 1
+          for: 1h
+          labels:
+            severity: info
+          annotations:
+            summary: "CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} is suspended"
+            description: "CronJob has been suspended for more than 1 hour"
+
+        # 64
+        - alert: CronJobRunningTooLong
+          expr: time() - kube_cronjob_next_schedule_time > 3600
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} running too long"
+            description: "CronJob job instance has been running for more than 1 hour"
+
+        # 65
+        - alert: CronJobLastRunFailed
+          expr: kube_job_status_failed{job_name=~".*-[0-9]+"} > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CronJob {{ $labels.namespace }}/{{ $labels.job_name }} last run failed"
+            description: "Last CronJob run has failed"

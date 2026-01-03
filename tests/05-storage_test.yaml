@@ -1,0 +1,238 @@
+# Unit tests for storage alerts (Rules 66-78)
+# Run with: promtool test rules tests/05-storage_test.yaml
+
+evaluation_interval: 1m
+
+rule_files:
+  - ../alert-rules/05-storage.yaml
+
+tests:
+  # ===========================================
+  # Test 66: PersistentVolumePending
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolume_status_phase{persistentvolume="pv-pending", phase="Pending"}'
+        values: "1x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: PersistentVolumePending
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              persistentvolume: pv-pending
+              phase: Pending
+
+  # ===========================================
+  # Test 67: PersistentVolumeFailed
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolume_status_phase{persistentvolume="pv-failed", phase="Failed"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: PersistentVolumeFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              persistentvolume: pv-failed
+              phase: Failed
+
+  # ===========================================
+  # Test 68: PersistentVolumeClaimPending
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolumeclaim_status_phase{namespace="default", persistentvolumeclaim="data-pvc", phase="Pending"}'
+        values: "1x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: PersistentVolumeClaimPending
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              persistentvolumeclaim: data-pvc
+              phase: Pending
+
+  # ===========================================
+  # Test 69: PersistentVolumeClaimLost
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolumeclaim_status_phase{namespace="default", persistentvolumeclaim="lost-pvc", phase="Lost"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: PersistentVolumeClaimLost
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: default
+              persistentvolumeclaim: lost-pvc
+              phase: Lost
+
+  # ===========================================
+  # Test 70: PersistentVolumeHighUsage (>80%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kubelet_volume_stats_used_bytes{namespace="default", persistentvolumeclaim="data-pvc"}'
+        values: "85000000000x15"    # 85GB used
+      - series: 'kubelet_volume_stats_capacity_bytes{namespace="default", persistentvolumeclaim="data-pvc"}'
+        values: "100000000000x15"   # 100GB capacity = 85%
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: PersistentVolumeHighUsage
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              persistentvolumeclaim: data-pvc
+
+  # ===========================================
+  # Test 71: PersistentVolumeCriticalUsage (>90%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kubelet_volume_stats_used_bytes{namespace="default", persistentvolumeclaim="full-pvc"}'
+        values: "95000000000x10"    # 95GB used
+      - series: 'kubelet_volume_stats_capacity_bytes{namespace="default", persistentvolumeclaim="full-pvc"}'
+        values: "100000000000x10"   # 100GB capacity = 95%
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: PersistentVolumeCriticalUsage
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: default
+              persistentvolumeclaim: full-pvc
+
+  # ===========================================
+  # Test 73: PersistentVolumeInodeHigh (>80%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kubelet_volume_stats_inodes_used{namespace="default", persistentvolumeclaim="many-files-pvc"}'
+        values: "850000x15"     # 850k inodes used
+      - series: 'kubelet_volume_stats_inodes{namespace="default", persistentvolumeclaim="many-files-pvc"}'
+        values: "1000000x15"    # 1M inodes = 85%
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: PersistentVolumeInodeHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              persistentvolumeclaim: many-files-pvc
+
+  # ===========================================
+  # Test 74: LocalPathProvisionerDown
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'up{job="local-path-provisioner", instance="provisioner:8080"}'
+        values: "1 1 0 0 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: LocalPathProvisionerDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: local-path-provisioner
+              instance: "provisioner:8080"
+
+  # ===========================================
+  # Test 75: NodeDiskIOHigh (>90%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'node_disk_io_time_seconds_total{instance="node1:9100", device="sda"}'
+        values: "0+55x20"  # 55 seconds of IO per minute = 92%
+    alert_rule_test:
+      - eval_time: 18m
+        alertname: NodeDiskIOHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: "node1:9100"
+              device: sda
+
+  # ===========================================
+  # Test 76: NodeDiskReadLatencyHigh (>100ms)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'node_disk_read_time_seconds_total{instance="node1:9100", device="sda"}'
+        values: "0+20x15"   # 20 seconds of read time
+      - series: 'node_disk_reads_completed_total{instance="node1:9100", device="sda"}'
+        values: "0+100x15"  # 100 reads = 200ms avg latency
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: NodeDiskReadLatencyHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: "node1:9100"
+              device: sda
+
+  # ===========================================
+  # Test 77: NodeDiskWriteLatencyHigh (>100ms)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'node_disk_write_time_seconds_total{instance="node1:9100", device="sda"}'
+        values: "0+15x15"   # 15 seconds of write time
+      - series: 'node_disk_writes_completed_total{instance="node1:9100", device="sda"}'
+        values: "0+100x15"  # 100 writes = 150ms avg latency
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: NodeDiskWriteLatencyHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: "node1:9100"
+              device: sda
+
+  # ===========================================
+  # Test 78: StorageClassWithoutProvisioner
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_storageclass_info{storageclass="manual", provisioner="kubernetes.io/no-provisioner"}'
+        values: "1x5"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: StorageClassWithoutProvisioner
+        exp_alerts:
+          - exp_labels:
+              severity: info
+              storageclass: manual
+              provisioner: "kubernetes.io/no-provisioner"
+
+  # ===========================================
+  # Negative test: Healthy storage
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolume_status_phase{persistentvolume="healthy-pv", phase="Bound"}'
+        values: "1x20"
+      - series: 'kube_persistentvolumeclaim_status_phase{namespace="default", persistentvolumeclaim="healthy-pvc", phase="Bound"}'
+        values: "1x20"
+      - series: 'kubelet_volume_stats_used_bytes{namespace="default", persistentvolumeclaim="healthy-pvc"}'
+        values: "50000000000x20"    # 50GB used
+      - series: 'kubelet_volume_stats_capacity_bytes{namespace="default", persistentvolumeclaim="healthy-pvc"}'
+        values: "100000000000x20"   # 100GB capacity = 50%
+      - series: 'up{job="local-path-provisioner", instance="provisioner:8080"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: PersistentVolumePending
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: PersistentVolumeHighUsage
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: LocalPathProvisionerDown
+        exp_alerts: []

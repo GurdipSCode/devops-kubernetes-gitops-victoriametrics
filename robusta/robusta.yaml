@@ -1,0 +1,178 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: robusta
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: https://robusta-charts.storage.googleapis.com
+    chart: robusta
+    targetRevision: 0.21.0
+    helm:
+      releaseName: robusta
+      values: |
+        clusterName: k3s-cluster
+        
+        # Disable bundled Prometheus (using VictoriaMetrics)
+        enablePrometheusStack: false
+        
+        # Connect to VictoriaMetrics
+        globalConfig:
+          prometheus_url: "http://vm-stack-vmselect.victoria-metrics.svc:8481/select/0/prometheus"
+        
+        # Sinks - UPDATE THESE WITH YOUR CREDENTIALS
+        sinksConfig:
+          - slack_sink:
+              name: main_slack
+              slack_channel: "#alerts"
+              api_key: "xoxb-your-slack-bot-token"
+          
+          # Uncomment and configure additional sinks as needed:
+          # - teams_sink:
+          #     name: main_teams
+          #     webhook_url: "https://outlook.office.com/webhook/YOUR_WEBHOOK_URL"
+          
+          # - pagerduty_sink:
+          #     name: pagerduty
+          #     api_key: "your-pagerduty-integration-key"
+          
+          # - opsgenie_sink:
+          #     name: opsgenie
+          #     api_key: "your-opsgenie-api-key"
+        
+        # Playbooks for alert enrichment
+        customPlaybooks:
+          # Enrich crash loop alerts with logs and events
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: PodCrashLooping
+            actions:
+              - logs_enricher: {}
+              - pod_events_enricher: {}
+          
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: PodCrashLoopBackOff
+            actions:
+              - logs_enricher: {}
+              - pod_events_enricher: {}
+          
+          # Enrich OOM alerts with memory graphs and logs
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: PodOOMKilled
+            actions:
+              - logs_enricher: {}
+              - pod_graph_enricher:
+                  resource_type: Memory
+          
+          # Enrich memory alerts with graphs
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: ContainerHighMemoryUsage
+            actions:
+              - pod_graph_enricher:
+                  resource_type: Memory
+          
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: ContainerCriticalMemoryUsage
+            actions:
+              - pod_graph_enricher:
+                  resource_type: Memory
+              - logs_enricher: {}
+          
+          # Enrich CPU alerts with graphs
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: ContainerHighCPUUsage
+            actions:
+              - pod_graph_enricher:
+                  resource_type: CPU
+          
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: ContainerHighCPUThrottling
+            actions:
+              - pod_graph_enricher:
+                  resource_type: CPU
+          
+          # Enrich node alerts
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: NodeHighCPUUsage
+            actions:
+              - node_graph_enricher:
+                  resource_type: CPU
+          
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: NodeHighMemoryUsage
+            actions:
+              - node_graph_enricher:
+                  resource_type: Memory
+          
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: NodeHighDiskUsage
+            actions:
+              - node_disk_analyzer: {}
+          
+          # Enrich deployment alerts
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: DeploymentReplicasMismatch
+            actions:
+              - deployment_events_enricher: {}
+          
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: DeploymentNoAvailableReplicas
+            actions:
+              - deployment_events_enricher: {}
+              - related_pods: {}
+          
+          # Enrich pending pod alerts
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: PodPending
+            actions:
+              - pod_events_enricher: {}
+              - pod_issue_investigator: {}
+          
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: PodSchedulingFailed
+            actions:
+              - pod_events_enricher: {}
+              - pod_issue_investigator: {}
+          
+          # Enrich image pull errors
+          - triggers:
+              - on_prometheus_alert:
+                  alert_name: PodImagePullBackOff
+            actions:
+              - pod_events_enricher: {}
+        
+        runner:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: robusta
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

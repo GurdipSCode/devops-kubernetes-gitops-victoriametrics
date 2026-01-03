@@ -1,0 +1,343 @@
+# Unit tests for pod health alerts (Rules 16-35)
+# Run with: promtool test rules tests/02-pod-health_test.yaml
+
+evaluation_interval: 1m
+
+rule_files:
+  - ../alert-rules/02-pod-health.yaml
+
+tests:
+  # ===========================================
+  # Test 16: PodCrashLooping
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="default", pod="myapp-abc123", container="app"}'
+        values: "0 1 2 3 4 5 6 7 8 9 10"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PodCrashLooping
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              pod: myapp-abc123
+              container: app
+
+  # ===========================================
+  # Test 17: PodFrequentRestarts
+  # ===========================================
+  - interval: 10m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="default", pod="unstable-pod", container="main"}'
+        values: "0 2 4 6 8 10 12"  # 6 restarts per hour
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: PodFrequentRestarts
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              pod: unstable-pod
+
+  # ===========================================
+  # Test 18: PodNotReady (Pending)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_status_phase{namespace="default", pod="pending-pod", phase="Pending"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: PodNotReady
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              pod: pending-pod
+
+  # ===========================================
+  # Test 19: PodFailed
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_status_phase{namespace="default", pod="failed-pod", phase="Failed"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: PodFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: default
+              pod: failed-pod
+              phase: Failed
+
+  # ===========================================
+  # Test 20: PodPending
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_status_phase{namespace="default", pod="stuck-pod", phase="Pending"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: PodPending
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              pod: stuck-pod
+
+  # ===========================================
+  # Test 21: PodOOMKilled
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_last_terminated_reason{namespace="default", pod="oom-pod", container="app", reason="OOMKilled"}'
+        values: "1x5"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: PodOOMKilled
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              pod: oom-pod
+              container: app
+              reason: OOMKilled
+
+  # ===========================================
+  # Test 22: PodContainerWaiting
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_waiting_reason{namespace="default", pod="waiting-pod", container="app", reason="CrashLoopBackOff"}'
+        values: "1x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: PodContainerWaiting
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              pod: waiting-pod
+              container: app
+              reason: CrashLoopBackOff
+
+  # ===========================================
+  # Test 23: PodImagePullBackOff
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_waiting_reason{namespace="default", pod="bad-image-pod", container="app", reason="ImagePullBackOff"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: PodImagePullBackOff
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              pod: bad-image-pod
+              container: app
+              reason: ImagePullBackOff
+
+  # ===========================================
+  # Test 24: PodCrashLoopBackOff
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_waiting_reason{namespace="default", pod="crashloop-pod", container="app", reason="CrashLoopBackOff"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: PodCrashLoopBackOff
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: default
+              pod: crashloop-pod
+              container: app
+              reason: CrashLoopBackOff
+
+  # ===========================================
+  # Test 25: PodEvicted
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_status_reason{namespace="default", pod="evicted-pod", reason="Evicted"}'
+        values: "1x5"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: PodEvicted
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              pod: evicted-pod
+              reason: Evicted
+
+  # ===========================================
+  # Test 26: PodSchedulingFailed
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_status_unschedulable{namespace="default", pod="unschedulable-pod"}'
+        values: "1x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: PodSchedulingFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              pod: unschedulable-pod
+
+  # ===========================================
+  # Test 27: ContainerHighCPUThrottling (>25%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'container_cpu_cfs_throttled_periods_total{namespace="default", pod="throttled-pod", container="app"}'
+        values: "0+30x15"   # 30 throttled periods per minute
+      - series: 'container_cpu_cfs_periods_total{namespace="default", pod="throttled-pod", container="app"}'
+        values: "0+100x15"  # 100 total periods = 30% throttled
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ContainerHighCPUThrottling
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              pod: throttled-pod
+              container: app
+
+  # ===========================================
+  # Test 28: ContainerHighMemoryUsage (>85%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'container_memory_working_set_bytes{namespace="default", pod="mem-pod", container="app"}'
+        values: "900000000x15"   # 900MB used
+      - series: 'container_spec_memory_limit_bytes{namespace="default", pod="mem-pod", container="app"}'
+        values: "1000000000x15"  # 1GB limit = 90% used
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ContainerHighMemoryUsage
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              pod: mem-pod
+              container: app
+
+  # ===========================================
+  # Test 29: ContainerCriticalMemoryUsage (>95%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'container_memory_working_set_bytes{namespace="default", pod="crit-mem-pod", container="app"}'
+        values: "980000000x10"   # 980MB used
+      - series: 'container_spec_memory_limit_bytes{namespace="default", pod="crit-mem-pod", container="app"}'
+        values: "1000000000x10"  # 1GB limit = 98% used
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: ContainerCriticalMemoryUsage
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: default
+              pod: crit-mem-pod
+              container: app
+
+  # ===========================================
+  # Test 31: InitContainerFailed
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_init_container_status_last_terminated_reason{namespace="default", pod="init-fail-pod", container="init", reason="Error"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: InitContainerFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              pod: init-fail-pod
+              container: init
+              reason: Error
+
+  # ===========================================
+  # Test 33: PodContainerTerminated
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_terminated_reason{namespace="default", pod="term-pod", container="app", reason="Error"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: PodContainerTerminated
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              pod: term-pod
+              container: app
+              reason: Error
+
+  # ===========================================
+  # Test 34: TooManyPodsOnNode
+  # ===========================================
+  - interval: 1m
+    input_series:
+      # Simulate 110 pods on a node
+      - series: 'kube_pod_info{node="busy-node", namespace="ns1", pod="pod1"}'
+        values: "1x10"
+      - series: 'kube_pod_info{node="busy-node", namespace="ns1", pod="pod2"}'
+        values: "1x10"
+      # ... In reality you'd have 110 series, but for testing we use the count
+    alert_rule_test:
+      # Note: This test is simplified - real test would need 101+ pod series
+      - eval_time: 7m
+        alertname: TooManyPodsOnNode
+        exp_alerts: []  # Won't fire with only 2 pods
+
+  # ===========================================
+  # Test 35: ContainerRestarted
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="default", pod="restarted-pod", container="app"}'
+        values: "0 0 0 0 0 1 1 1 1 1 1"  # Restart at minute 5
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: ContainerRestarted
+        exp_alerts:
+          - exp_labels:
+              severity: info
+              namespace: default
+              pod: restarted-pod
+              container: app
+
+  # ===========================================
+  # Negative test: Healthy pod - no alerts
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_status_phase{namespace="default", pod="healthy-pod", phase="Running"}'
+        values: "1x20"
+      - series: 'kube_pod_container_status_restarts_total{namespace="default", pod="healthy-pod", container="app"}'
+        values: "0x20"  # No restarts
+      - series: 'container_memory_working_set_bytes{namespace="default", pod="healthy-pod", container="app"}'
+        values: "500000000x20"   # 500MB used
+      - series: 'container_spec_memory_limit_bytes{namespace="default", pod="healthy-pod", container="app"}'
+        values: "1000000000x20"  # 1GB limit = 50% used
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: PodCrashLooping
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ContainerHighMemoryUsage
+        exp_alerts: []

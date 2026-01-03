@@ -1,0 +1,127 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: k3s-resources
+  namespace: victoria-metrics
+  labels:
+    app: vmalert
+spec:
+  groups:
+    - name: k3s-resources
+      interval: 30s
+      rules:
+        # 91
+        - alert: NamespaceQuotaExceeded
+          expr: |
+            kube_resourcequota{type="used"} / ignoring(type) (kube_resourcequota{type="hard"} > 0) * 100 > 90
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "ResourceQuota {{ $labels.resourcequota }} in {{ $labels.namespace }} exceeded 90%"
+            description: "Resource {{ $labels.resource }} usage is {{ $value | printf \"%.1f\" }}%"
+
+        # 92
+        - alert: HPAMaxedOut
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas >= kube_horizontalpodautoscaler_spec_max_replicas
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} at max replicas"
+            description: "HPA has been at maximum capacity for 30 minutes"
+
+        # 93
+        - alert: HPAUnableToScale
+          expr: |
+            kube_horizontalpodautoscaler_status_condition{condition="ScalingActive",status="false"} == 1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} unable to scale"
+            description: "HPA is not able to scale workload"
+
+        # 94
+        - alert: HPAReplicasMismatch
+          expr: |
+            (kube_horizontalpodautoscaler_status_desired_replicas != kube_horizontalpodautoscaler_status_current_replicas)
+            and changes(kube_horizontalpodautoscaler_status_current_replicas[15m]) == 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} replica mismatch"
+            description: "HPA desired replicas don't match current replicas"
+
+        # 95
+        - alert: ClusterCPUOvercommit
+          expr: |
+            sum(kube_pod_container_resource_requests{resource="cpu"})
+            / sum(kube_node_status_allocatable{resource="cpu"}) * 100 > 150
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Cluster CPU overcommit"
+            description: "CPU requests are {{ $value | printf \"%.1f\" }}% of allocatable"
+
+        # 96
+        - alert: ClusterMemoryOvercommit
+          expr: |
+            sum(kube_pod_container_resource_requests{resource="memory"})
+            / sum(kube_node_status_allocatable{resource="memory"}) * 100 > 150
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Cluster memory overcommit"
+            description: "Memory requests are {{ $value | printf \"%.1f\" }}% of allocatable"
+
+        # 97
+        - alert: NamespaceCPUThrottling
+          expr: |
+            sum by(namespace) (rate(container_cpu_cfs_throttled_periods_total[5m]))
+            / sum by(namespace) (rate(container_cpu_cfs_periods_total[5m])) * 100 > 50
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High CPU throttling in namespace {{ $labels.namespace }}"
+            description: "{{ $value | printf \"%.1f\" }}% of CPU periods are throttled"
+
+        # 98
+        - alert: PodResourceLimitsMissing
+          expr: |
+            count by(namespace) (
+              kube_pod_container_info{container!=""}
+              unless on(namespace, pod, container)
+              kube_pod_container_resource_limits{resource="memory"}
+            ) > 0
+          for: 0m
+          labels:
+            severity: info
+          annotations:
+            summary: "Pods in {{ $labels.namespace }} missing resource limits"
+            description: "{{ $value }} containers have no memory limits set"
+
+        # 99
+        - alert: ClusterAutoscalerUnschedulablePods
+          expr: cluster_autoscaler_unschedulable_pods_count > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Cluster has unschedulable pods"
+            description: "{{ $value }} pods cannot be scheduled. Cluster may need more nodes"
+
+        # 100
+        - alert: ClusterNodeCountLow
+          expr: count(kube_node_info) < 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Cluster has less than 2 nodes"
+            description: "Only {{ $value }} node(s) available in the cluster"

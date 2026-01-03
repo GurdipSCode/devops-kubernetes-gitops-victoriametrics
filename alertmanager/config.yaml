@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-config
+  namespace: victoria-metrics
+stringData:
+  alertmanager.yaml: |
+    global:
+      resolve_timeout: 5m
+    
+    route:
+      receiver: default
+      group_by: ['alertname', 'namespace', 'severity']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        # Critical alerts - immediate notification
+        - match:
+            severity: critical
+          receiver: default
+          group_wait: 10s
+          repeat_interval: 1h
+        
+        # Warning alerts - standard grouping
+        - match:
+            severity: warning
+          receiver: default
+          repeat_interval: 4h
+        
+        # Info alerts - low priority
+        - match:
+            severity: info
+          receiver: default
+          repeat_interval: 24h
+    
+    receivers:
+      - name: default
+        webhook_configs:
+          # Option 1: Robusta (if deployed separately)
+          - url: 'http://robusta-runner.robusta.svc.cluster.local/api/alerts'
+            send_resolved: true
+        
+        # Option 2: Direct Slack webhook (uncomment and configure)
+        # slack_configs:
+        #   - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+        #     channel: '#alerts'
+        #     send_resolved: true
+        #     title: '{{ .Status | toUpper }}: {{ .CommonLabels.alertname }}'
+        #     text: '{{ range .Alerts }}*{{ .Annotations.summary }}*\n{{ .Annotations.description }}\n{{ end }}'
+        
+        # Option 3: PagerDuty (uncomment and configure)
+        # pagerduty_configs:
+        #   - service_key: 'YOUR_PAGERDUTY_SERVICE_KEY'
+        #     send_resolved: true
+        
+        # Option 4: Email (uncomment and configure)
+        # email_configs:
+        #   - to: 'alerts@yourcompany.com'
+        #     send_resolved: true
+    
+    inhibit_rules:
+      # Don't alert warning if critical is already firing
+      - source_match:
+          severity: critical
+        target_match:
+          severity: warning
+        equal: ['alertname', 'namespace']
+      
+      # Don't alert on pods if node is down
+      - source_match:
+          alertname: NodeDown
+        target_match_re:
+          alertname: Pod.*
+        equal: ['instance']

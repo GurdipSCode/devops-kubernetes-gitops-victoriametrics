@@ -1,0 +1,275 @@
+# Unit tests for node health alerts (Rules 1-15)
+# Run with: promtool test rules tests/01-node-health_test.yaml
+
+evaluation_interval: 1m
+
+rule_files:
+  - ../alert-rules/01-node-health.yaml
+
+tests:
+  # ===========================================
+  # Test 1: NodeDown
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'up{job="node-exporter", instance="node1:9100"}'
+        values: "1 1 1 0 0 0 0 0 0 0"
+      - series: 'up{job="node-exporter", instance="node2:9100"}'
+        values: "1 1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: NodeDown
+        exp_alerts: []  # Not yet 5m
+      - eval_time: 9m
+        alertname: NodeDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node-exporter
+              instance: "node1:9100"
+            exp_annotations:
+              summary: "Node node1:9100 is down"
+              description: "Node exporter on node1:9100 has been unreachable for 5 minutes"
+
+  # ===========================================
+  # Test 2: NodeNotReady
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_status_condition{node="node1", condition="Ready", status="true"}'
+        values: "1 1 1 0 0 0 0 0 0 0"
+      - series: 'kube_node_status_condition{node="node2", condition="Ready", status="true"}'
+        values: "1 1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: NodeNotReady
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              node: node1
+              condition: Ready
+              status: "true"
+
+  # ===========================================
+  # Test 3: NodeMemoryPressure
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_status_condition{node="node1", condition="MemoryPressure", status="true"}'
+        values: "1 1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: NodeMemoryPressure
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              node: node1
+              condition: MemoryPressure
+              status: "true"
+
+  # ===========================================
+  # Test 4: NodeDiskPressure
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_status_condition{node="node1", condition="DiskPressure", status="true"}'
+        values: "1 1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: NodeDiskPressure
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              node: node1
+
+  # ===========================================
+  # Test 5: NodePIDPressure
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_status_condition{node="node1", condition="PIDPressure", status="true"}'
+        values: "1 1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: NodePIDPressure
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              node: node1
+
+  # ===========================================
+  # Test 6: NodeNetworkUnavailable
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_status_condition{node="node1", condition="NetworkUnavailable", status="true"}'
+        values: "1 1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: NodeNetworkUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              node: node1
+
+  # ===========================================
+  # Test 7: NodeHighCPUUsage (>85%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      # Simulate 90% CPU usage (10% idle)
+      - series: 'node_cpu_seconds_total{instance="node1:9100", mode="idle", cpu="0"}'
+        values: "0+6x20"  # 6 seconds idle per minute = 10% idle = 90% usage
+      - series: 'node_cpu_seconds_total{instance="node1:9100", mode="user", cpu="0"}'
+        values: "0+54x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: NodeHighCPUUsage
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: "node1:9100"
+
+  # ===========================================
+  # Test 8: NodeCriticalCPUUsage (>95%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      # Simulate 98% CPU usage (2% idle)
+      - series: 'node_cpu_seconds_total{instance="node1:9100", mode="idle", cpu="0"}'
+        values: "0+1.2x20"  # ~2% idle = 98% usage
+      - series: 'node_cpu_seconds_total{instance="node1:9100", mode="user", cpu="0"}'
+        values: "0+58.8x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: NodeCriticalCPUUsage
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: "node1:9100"
+
+  # ===========================================
+  # Test 9: NodeHighMemoryUsage (>85%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'node_memory_MemTotal_bytes{instance="node1:9100"}'
+        values: "10000000000x15"  # 10GB total
+      - series: 'node_memory_MemAvailable_bytes{instance="node1:9100"}'
+        values: "1000000000x15"   # 1GB available = 90% used
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: NodeHighMemoryUsage
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: "node1:9100"
+
+  # ===========================================
+  # Test 10: NodeCriticalMemoryUsage (>95%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'node_memory_MemTotal_bytes{instance="node1:9100"}'
+        values: "10000000000x10"  # 10GB total
+      - series: 'node_memory_MemAvailable_bytes{instance="node1:9100"}'
+        values: "400000000x10"    # 400MB available = 96% used
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: NodeCriticalMemoryUsage
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: "node1:9100"
+
+  # ===========================================
+  # Test 11: NodeHighDiskUsage (>80%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'node_filesystem_size_bytes{instance="node1:9100", fstype="ext4", mountpoint="/"}'
+        values: "100000000000x15"  # 100GB total
+      - series: 'node_filesystem_avail_bytes{instance="node1:9100", fstype="ext4", mountpoint="/"}'
+        values: "15000000000x15"   # 15GB available = 85% used
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: NodeHighDiskUsage
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: "node1:9100"
+              fstype: ext4
+              mountpoint: "/"
+
+  # ===========================================
+  # Test 12: NodeCriticalDiskUsage (>90%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'node_filesystem_size_bytes{instance="node1:9100", fstype="ext4", mountpoint="/"}'
+        values: "100000000000x10"  # 100GB total
+      - series: 'node_filesystem_avail_bytes{instance="node1:9100", fstype="ext4", mountpoint="/"}'
+        values: "5000000000x10"    # 5GB available = 95% used
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: NodeCriticalDiskUsage
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: "node1:9100"
+
+  # ===========================================
+  # Test 14: NodeHighLoadAverage
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'node_load15{instance="node1:9100"}'
+        values: "8x20"  # Load of 8
+      - series: 'node_cpu_seconds_total{instance="node1:9100", mode="idle", cpu="0"}'
+        values: "0+60x20"
+      - series: 'node_cpu_seconds_total{instance="node1:9100", mode="idle", cpu="1"}'
+        values: "0+60x20"
+      # 2 CPUs, load 8 = 4x CPUs = >2x threshold
+    alert_rule_test:
+      - eval_time: 18m
+        alertname: NodeHighLoadAverage
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: "node1:9100"
+
+  # ===========================================
+  # Test 15: NodeClockSkew
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'node_timex_offset_seconds{instance="node1:9100"}'
+        values: "0.1x15"  # 100ms offset > 50ms threshold
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: NodeClockSkew
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: "node1:9100"
+
+  # ===========================================
+  # Negative test: No alert when healthy
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'up{job="node-exporter", instance="healthy-node:9100"}'
+        values: "1x20"
+      - series: 'kube_node_status_condition{node="healthy-node", condition="Ready", status="true"}'
+        values: "1x20"
+      - series: 'node_memory_MemTotal_bytes{instance="healthy-node:9100"}'
+        values: "10000000000x20"
+      - series: 'node_memory_MemAvailable_bytes{instance="healthy-node:9100"}'
+        values: "5000000000x20"  # 50% used - healthy
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: NodeDown
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: NodeHighMemoryUsage
+        exp_alerts: []

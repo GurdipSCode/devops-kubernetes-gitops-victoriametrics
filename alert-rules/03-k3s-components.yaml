@@ -1,0 +1,165 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: k3s-components
+  namespace: victoria-metrics
+  labels:
+    app: vmalert
+spec:
+  groups:
+    - name: k3s-components
+      interval: 30s
+      rules:
+        # 36
+        - alert: K3sServerDown
+          expr: up{job=~".*k3s.*server.*|.*apiserver.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "K3s server is down"
+            description: "K3s server on {{ $labels.instance }} has been down for 2 minutes"
+
+        # 37
+        - alert: K3sAgentDown
+          expr: up{job=~".*k3s.*agent.*|.*kubelet.*"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "K3s agent is down on {{ $labels.instance }}"
+            description: "K3s agent has been unreachable for 5 minutes"
+
+        # 38
+        - alert: KubeAPIServerDown
+          expr: absent(up{job="apiserver"} == 1)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Kubernetes API server is down"
+            description: "No Kubernetes API server instances are running"
+
+        # 39
+        - alert: KubeAPIServerHighLatency
+          expr: histogram_quantile(0.99, sum(rate(apiserver_request_duration_seconds_bucket{verb!~"WATCH|CONNECT"}[5m])) by (le, verb)) > 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kubernetes API server high latency"
+            description: "99th percentile latency for {{ $labels.verb }} requests is {{ $value | printf \"%.2f\" }}s"
+
+        # 40
+        - alert: KubeAPIServerErrors
+          expr: |
+            sum(rate(apiserver_request_total{code=~"5.."}[5m]))
+            / sum(rate(apiserver_request_total[5m])) * 100 > 3
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kubernetes API server error rate high"
+            description: "API server error rate is {{ $value | printf \"%.2f\" }}%"
+
+        # 41
+        - alert: KubeAPIServerCriticalErrors
+          expr: |
+            sum(rate(apiserver_request_total{code=~"5.."}[5m]))
+            / sum(rate(apiserver_request_total[5m])) * 100 > 10
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Kubernetes API server critical error rate"
+            description: "API server error rate is {{ $value | printf \"%.2f\" }}%"
+
+        # 42
+        - alert: KubeletDown
+          expr: up{job="kubelet"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Kubelet is down on {{ $labels.instance }}"
+            description: "Kubelet has been unreachable for 5 minutes"
+
+        # 43
+        - alert: KubeletTooManyPods
+          expr: kubelet_running_pods / kubelet_node_config_pod_cidr_size * 100 > 90
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kubelet on {{ $labels.instance }} running too many pods"
+            description: "Kubelet is at {{ $value | printf \"%.1f\" }}% of pod capacity"
+
+        # 44
+        - alert: KubeletPLEGHighDuration
+          expr: histogram_quantile(0.99, sum(rate(kubelet_pleg_relist_duration_seconds_bucket[5m])) by (le, instance)) > 10
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kubelet PLEG high duration on {{ $labels.instance }}"
+            description: "PLEG relist 99th percentile duration is {{ $value | printf \"%.2f\" }}s"
+
+        # 45
+        - alert: KubeControllerManagerDown
+          expr: absent(up{job=~".*controller-manager.*"} == 1)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Kubernetes controller manager is down"
+            description: "No controller manager instances are running"
+
+        # 46
+        - alert: KubeSchedulerDown
+          expr: absent(up{job=~".*scheduler.*"} == 1)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Kubernetes scheduler is down"
+            description: "No scheduler instances are running"
+
+        # 47
+        - alert: KubeSchedulerHighLatency
+          expr: histogram_quantile(0.99, sum(rate(scheduler_scheduling_algorithm_duration_seconds_bucket[5m])) by (le)) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kubernetes scheduler high latency"
+            description: "99th percentile scheduling latency is {{ $value | printf \"%.3f\" }}s"
+
+        # 48
+        - alert: KubeSchedulerPendingPods
+          expr: scheduler_pending_pods > 10
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Too many pending pods in scheduler"
+            description: "{{ $value }} pods are pending scheduling"
+
+        # 49
+        - alert: EtcdHighLatency
+          expr: histogram_quantile(0.99, sum(rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])) by (le)) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "etcd high WAL fsync latency"
+            description: "99th percentile WAL fsync latency is {{ $value | printf \"%.3f\" }}s"
+
+        # 50
+        - alert: EtcdHighCommitLatency
+          expr: histogram_quantile(0.99, sum(rate(etcd_disk_backend_commit_duration_seconds_bucket[5m])) by (le)) > 0.25
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "etcd high commit latency"
+            description: "99th percentile backend commit latency is {{ $value | printf \"%.3f\" }}s"

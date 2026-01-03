@@ -1,0 +1,137 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: k3s-networking
+  namespace: victoria-metrics
+  labels:
+    app: vmalert
+spec:
+  groups:
+    - name: k3s-networking
+      interval: 30s
+      rules:
+        # 79
+        - alert: CoreDNSDown
+          expr: absent(up{job=~".*coredns.*|.*kube-dns.*"} == 1)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "CoreDNS is down"
+            description: "No CoreDNS instances are running"
+
+        # 80
+        - alert: CoreDNSHighLatency
+          expr: |
+            histogram_quantile(0.99, sum(rate(coredns_dns_request_duration_seconds_bucket[5m])) by (le)) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CoreDNS high latency"
+            description: "99th percentile DNS latency is {{ $value | printf \"%.3f\" }}s"
+
+        # 81
+        - alert: CoreDNSErrorsHigh
+          expr: |
+            sum(rate(coredns_dns_responses_total{rcode="SERVFAIL"}[5m]))
+            / sum(rate(coredns_dns_responses_total[5m])) * 100 > 5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "CoreDNS high error rate"
+            description: "CoreDNS SERVFAIL rate is {{ $value | printf \"%.2f\" }}%"
+
+        # 82
+        - alert: CoreDNSPanicCount
+          expr: increase(coredns_panics_total[1h]) > 0
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: "CoreDNS has panicked"
+            description: "CoreDNS has panicked {{ $value }} times in the last hour"
+
+        # 83
+        - alert: TraefikDown
+          expr: absent(up{job=~".*traefik.*"} == 1)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Traefik ingress controller is down"
+            description: "No Traefik instances are running"
+
+        # 84
+        - alert: TraefikHighErrorRate
+          expr: |
+            sum(rate(traefik_entrypoint_requests_total{code=~"5.."}[5m]))
+            / sum(rate(traefik_entrypoint_requests_total[5m])) * 100 > 5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Traefik high error rate"
+            description: "Traefik 5xx error rate is {{ $value | printf \"%.2f\" }}%"
+
+        # 85
+        - alert: TraefikHighLatency
+          expr: |
+            histogram_quantile(0.99, sum(rate(traefik_entrypoint_request_duration_seconds_bucket[5m])) by (le, entrypoint)) > 2
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Traefik high latency on {{ $labels.entrypoint }}"
+            description: "99th percentile latency is {{ $value | printf \"%.2f\" }}s"
+
+        # 86
+        - alert: ServiceEndpointsNotReady
+          expr: kube_endpoint_address_not_ready > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Service {{ $labels.namespace }}/{{ $labels.endpoint }} has not ready endpoints"
+            description: "{{ $value }} endpoints are not ready"
+
+        # 87
+        - alert: ServiceNoEndpoints
+          expr: kube_endpoint_address_available == 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Service {{ $labels.namespace }}/{{ $labels.endpoint }} has no endpoints"
+            description: "Service has no available endpoints"
+
+        # 88
+        - alert: IngressWithoutBackend
+          expr: kube_ingress_path{service_name=""} > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Ingress {{ $labels.namespace }}/{{ $labels.ingress }} has no backend"
+            description: "Ingress path has no service backend"
+
+        # 89
+        - alert: NodeNetworkReceiveErrors
+          expr: rate(node_network_receive_errs_total[5m]) > 10
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Network receive errors on {{ $labels.instance }} ({{ $labels.device }})"
+            description: "{{ $value | printf \"%.1f\" }} receive errors per second"
+
+        # 90
+        - alert: NodeNetworkTransmitErrors
+          expr: rate(node_network_transmit_errs_total[5m]) > 10
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Network transmit errors on {{ $labels.instance }} ({{ $labels.device }})"
+            description: "{{ $value | printf \"%.1f\" }} transmit errors per second"

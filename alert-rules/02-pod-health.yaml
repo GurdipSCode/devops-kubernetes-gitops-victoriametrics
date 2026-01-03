@@ -1,0 +1,225 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: k3s-pod-health
+  namespace: victoria-metrics
+  labels:
+    app: vmalert
+spec:
+  groups:
+    - name: k3s-pod-health
+      interval: 30s
+      rules:
+        # 16
+        - alert: PodCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total[15m]) * 60 * 15 > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+            description: "Pod has restarted {{ $value | printf \"%.0f\" }} times in the last 15 minutes"
+
+        # 17
+        - alert: PodFrequentRestarts
+          expr: increase(kube_pod_container_status_restarts_total[1h]) > 5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} restarting frequently"
+            description: "Pod has restarted {{ $value | printf \"%.0f\" }} times in the last hour"
+
+        # 18
+        - alert: PodNotReady
+          expr: sum by(namespace, pod) (kube_pod_status_phase{phase=~"Pending|Unknown"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} not ready"
+            description: "Pod has been in {{ $labels.phase }} state for more than 15 minutes"
+
+        # 19
+        - alert: PodFailed
+          expr: kube_pod_status_phase{phase="Failed"} > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has failed"
+            description: "Pod is in Failed state"
+
+        # 20
+        - alert: PodPending
+          expr: kube_pod_status_phase{phase="Pending"} > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is pending"
+            description: "Pod has been pending for more than 15 minutes"
+
+        # 21
+        - alert: PodOOMKilled
+          expr: kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} was OOMKilled"
+            description: "Container was terminated due to out of memory"
+
+        # 22
+        - alert: PodContainerWaiting
+          expr: kube_pod_container_status_waiting_reason{reason!="ContainerCreating"} > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} is waiting"
+            description: "Container is waiting due to {{ $labels.reason }}"
+
+        # 23
+        - alert: PodImagePullBackOff
+          expr: kube_pod_container_status_waiting_reason{reason="ImagePullBackOff"} > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has ImagePullBackOff"
+            description: "Container {{ $labels.container }} cannot pull image"
+
+        # 24
+        - alert: PodCrashLoopBackOff
+          expr: kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} in CrashLoopBackOff"
+            description: "Container {{ $labels.container }} is in CrashLoopBackOff state"
+
+        # 25
+        - alert: PodEvicted
+          expr: kube_pod_status_reason{reason="Evicted"} > 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} was evicted"
+            description: "Pod has been evicted from the node"
+
+        # 26
+        - alert: PodSchedulingFailed
+          expr: kube_pod_status_unschedulable > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} cannot be scheduled"
+            description: "Pod has been unschedulable for more than 10 minutes"
+
+        # 27
+        - alert: ContainerHighCPUThrottling
+          expr: |
+            sum by(namespace, pod, container) (
+              rate(container_cpu_cfs_throttled_periods_total[5m])
+            ) / sum by(namespace, pod, container) (
+              rate(container_cpu_cfs_periods_total[5m])
+            ) * 100 > 25
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High CPU throttling for {{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }}"
+            description: "CPU throttling is {{ $value | printf \"%.1f\" }}%"
+
+        # 28
+        - alert: ContainerHighMemoryUsage
+          expr: |
+            container_memory_working_set_bytes{container!=""}
+            / container_spec_memory_limit_bytes{container!=""}
+            * 100 > 85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High memory usage in {{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }}"
+            description: "Memory usage is {{ $value | printf \"%.1f\" }}% of limit"
+
+        # 29
+        - alert: ContainerCriticalMemoryUsage
+          expr: |
+            container_memory_working_set_bytes{container!=""}
+            / container_spec_memory_limit_bytes{container!=""}
+            * 100 > 95
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Critical memory usage in {{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }}"
+            description: "Memory usage is {{ $value | printf \"%.1f\" }}% of limit"
+
+        # 30
+        - alert: ContainerHighCPUUsage
+          expr: |
+            sum by(namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=""}[5m]))
+            / sum by(namespace, pod, container) (container_spec_cpu_quota{container!=""} / container_spec_cpu_period{container!=""})
+            * 100 > 85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High CPU usage in {{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }}"
+            description: "CPU usage is {{ $value | printf \"%.1f\" }}% of limit"
+
+        # 31
+        - alert: InitContainerFailed
+          expr: kube_pod_init_container_status_last_terminated_reason{reason!="Completed"} > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Init container failed in {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: "Init container {{ $labels.container }} terminated with reason {{ $labels.reason }}"
+
+        # 32
+        - alert: PodLongTerminating
+          expr: kube_pod_deletion_timestamp > 0 and (time() - kube_pod_deletion_timestamp) > 300
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} stuck terminating"
+            description: "Pod has been terminating for more than 5 minutes"
+
+        # 33
+        - alert: PodContainerTerminated
+          expr: kube_pod_container_status_terminated_reason{reason!~"Completed|OOMKilled"} > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} terminated"
+            description: "Container terminated with reason {{ $labels.reason }}"
+
+        # 34
+        - alert: TooManyPodsOnNode
+          expr: count by(node) (kube_pod_info) > 100
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Too many pods on node {{ $labels.node }}"
+            description: "Node has {{ $value }} pods running"
+
+        # 35
+        - alert: ContainerRestarted
+          expr: increase(kube_pod_container_status_restarts_total[10m]) > 0
+          for: 0m
+          labels:
+            severity: info
+          annotations:
+            summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} restarted"
+            description: "Container has restarted"

@@ -1,0 +1,225 @@
+# Unit tests for resources alerts (Rules 91-100)
+# Run with: promtool test rules tests/07-resources_test.yaml
+
+evaluation_interval: 1m
+
+rule_files:
+  - ../alert-rules/07-resources.yaml
+
+tests:
+  # ===========================================
+  # Test 91: NamespaceQuotaExceeded (>90%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_resourcequota{namespace="default", resourcequota="compute", resource="requests.cpu", type="used"}'
+        values: "9500x10"   # 9500m used
+      - series: 'kube_resourcequota{namespace="default", resourcequota="compute", resource="requests.cpu", type="hard"}'
+        values: "10000x10"  # 10000m limit = 95%
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: NamespaceQuotaExceeded
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              resourcequota: compute
+              resource: requests.cpu
+              type: used
+
+  # ===========================================
+  # Test 92: HPAMaxedOut
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_horizontalpodautoscaler_status_current_replicas{namespace="default", horizontalpodautoscaler="myapp-hpa"}'
+        values: "10x35"
+      - series: 'kube_horizontalpodautoscaler_spec_max_replicas{namespace="default", horizontalpodautoscaler="myapp-hpa"}'
+        values: "10x35"  # At max for 30+ minutes
+    alert_rule_test:
+      - eval_time: 32m
+        alertname: HPAMaxedOut
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              horizontalpodautoscaler: myapp-hpa
+
+  # ===========================================
+  # Test 93: HPAUnableToScale
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_horizontalpodautoscaler_status_condition{namespace="default", horizontalpodautoscaler="broken-hpa", condition="ScalingActive", status="false"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: HPAUnableToScale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              horizontalpodautoscaler: broken-hpa
+              condition: ScalingActive
+              status: "false"
+
+  # ===========================================
+  # Test 94: HPAReplicasMismatch
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_horizontalpodautoscaler_status_desired_replicas{namespace="default", horizontalpodautoscaler="stuck-hpa"}'
+        values: "5x20"
+      - series: 'kube_horizontalpodautoscaler_status_current_replicas{namespace="default", horizontalpodautoscaler="stuck-hpa"}'
+        values: "3x20"  # Stuck at 3, wants 5
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: HPAReplicasMismatch
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              horizontalpodautoscaler: stuck-hpa
+
+  # ===========================================
+  # Test 95: ClusterCPUOvercommit (>150%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_resource_requests{resource="cpu", namespace="default", pod="pod1"}'
+        values: "2000x15"  # 2 cores
+      - series: 'kube_pod_container_resource_requests{resource="cpu", namespace="default", pod="pod2"}'
+        values: "2000x15"  # 2 cores
+      - series: 'kube_pod_container_resource_requests{resource="cpu", namespace="default", pod="pod3"}'
+        values: "2000x15"  # 2 cores = 6 total
+      - series: 'kube_node_status_allocatable{resource="cpu", node="node1"}'
+        values: "4000x15"  # 4 cores allocatable = 150% overcommit
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ClusterCPUOvercommit
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+
+  # ===========================================
+  # Test 96: ClusterMemoryOvercommit (>150%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_resource_requests{resource="memory", namespace="default", pod="pod1"}'
+        values: "4000000000x15"  # 4GB
+      - series: 'kube_pod_container_resource_requests{resource="memory", namespace="default", pod="pod2"}'
+        values: "4000000000x15"  # 4GB
+      - series: 'kube_pod_container_resource_requests{resource="memory", namespace="default", pod="pod3"}'
+        values: "4000000000x15"  # 4GB = 12GB total
+      - series: 'kube_node_status_allocatable{resource="memory", node="node1"}'
+        values: "8000000000x15"  # 8GB allocatable = 150% overcommit
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ClusterMemoryOvercommit
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+
+  # ===========================================
+  # Test 97: NamespaceCPUThrottling (>50%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'container_cpu_cfs_throttled_periods_total{namespace="heavy-ns", pod="app1"}'
+        values: "0+60x20"
+      - series: 'container_cpu_cfs_periods_total{namespace="heavy-ns", pod="app1"}'
+        values: "0+100x20"  # 60% throttling
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: NamespaceCPUThrottling
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: heavy-ns
+
+  # ===========================================
+  # Test 98: PodResourceLimitsMissing
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_info{namespace="no-limits", pod="bad-pod", container="app"}'
+        values: "1x5"
+      # No corresponding kube_pod_container_resource_limits series
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: PodResourceLimitsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: info
+              namespace: no-limits
+
+  # ===========================================
+  # Test 99: ClusterAutoscalerUnschedulablePods
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'cluster_autoscaler_unschedulable_pods_count{}'
+        values: "5x20"  # 5 unschedulable pods
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: ClusterAutoscalerUnschedulablePods
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+
+  # ===========================================
+  # Test 100: ClusterNodeCountLow
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: "1x10"
+      # Only 1 node in cluster
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: ClusterNodeCountLow
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+
+  # ===========================================
+  # Negative test: Healthy resources
+  # ===========================================
+  - interval: 1m
+    input_series:
+      # Quota at 50%
+      - series: 'kube_resourcequota{namespace="default", resourcequota="compute", resource="requests.cpu", type="used"}'
+        values: "5000x20"
+      - series: 'kube_resourcequota{namespace="default", resourcequota="compute", resource="requests.cpu", type="hard"}'
+        values: "10000x20"
+      # HPA not maxed
+      - series: 'kube_horizontalpodautoscaler_status_current_replicas{namespace="default", horizontalpodautoscaler="healthy-hpa"}'
+        values: "5x20"
+      - series: 'kube_horizontalpodautoscaler_spec_max_replicas{namespace="default", horizontalpodautoscaler="healthy-hpa"}'
+        values: "10x20"
+      # Low CPU overcommit
+      - series: 'kube_pod_container_resource_requests{resource="cpu", namespace="default", pod="pod1"}'
+        values: "1000x20"
+      - series: 'kube_node_status_allocatable{resource="cpu", node="node1"}'
+        values: "4000x20"  # 25% usage
+      # Multiple nodes
+      - series: 'kube_node_info{node="node1"}'
+        values: "1x20"
+      - series: 'kube_node_info{node="node2"}'
+        values: "1x20"
+      - series: 'kube_node_info{node="node3"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: NamespaceQuotaExceeded
+        exp_alerts: []
+      - eval_time: 35m
+        alertname: HPAMaxedOut
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ClusterCPUOvercommit
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: ClusterNodeCountLow
+        exp_alerts: []

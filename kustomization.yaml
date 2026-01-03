@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: victoria-metrics
+
+resources:
+  # Base infrastructure
+  - base/namespace.yaml
+  - base/vm-operator.yaml
+  - base/vm-stack.yaml
+  
+  # Alertmanager configuration
+  - alertmanager/config.yaml
+  
+  # Alert rules (100 rules across 7 files)
+  - alert-rules/01-node-health.yaml
+  - alert-rules/02-pod-health.yaml
+  - alert-rules/03-k3s-components.yaml
+  - alert-rules/04-workloads.yaml
+  - alert-rules/05-storage.yaml
+  - alert-rules/06-networking.yaml
+  - alert-rules/07-resources.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: victoria-metrics-stack
+  app.kubernetes.io/managed-by: kustomize

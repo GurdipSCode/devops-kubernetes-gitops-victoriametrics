@@ -1,0 +1,280 @@
+# Unit tests for workload alerts (Rules 51-65)
+# Run with: promtool test rules tests/04-workloads_test.yaml
+
+evaluation_interval: 1m
+
+rule_files:
+  - ../alert-rules/04-workloads.yaml
+
+tests:
+  # ===========================================
+  # Test 51: DeploymentReplicasMismatch
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_deployment_spec_replicas{namespace="default", deployment="myapp"}'
+        values: "3x20"
+      - series: 'kube_deployment_status_replicas_available{namespace="default", deployment="myapp"}'
+        values: "2x20"  # Only 2 of 3 available
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: DeploymentReplicasMismatch
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              deployment: myapp
+
+  # ===========================================
+  # Test 52: DeploymentGenerationMismatch
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_deployment_metadata_generation{namespace="default", deployment="stuck-deploy"}'
+        values: "5x20"
+      - series: 'kube_deployment_status_observed_generation{namespace="default", deployment="stuck-deploy"}'
+        values: "4x20"  # Controller hasn't observed latest generation
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: DeploymentGenerationMismatch
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              deployment: stuck-deploy
+
+  # ===========================================
+  # Test 53: DeploymentRolloutStuck
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_deployment_status_condition{namespace="default", deployment="stuck-rollout", condition="Progressing", status="false"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: DeploymentRolloutStuck
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              deployment: stuck-rollout
+              condition: Progressing
+              status: "false"
+
+  # ===========================================
+  # Test 54: DeploymentNoAvailableReplicas
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_deployment_status_replicas_available{namespace="default", deployment="dead-deploy"}'
+        values: "0x10"
+      - series: 'kube_deployment_spec_replicas{namespace="default", deployment="dead-deploy"}'
+        values: "3x10"  # Wants 3 but has 0
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: DeploymentNoAvailableReplicas
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: default
+              deployment: dead-deploy
+
+  # ===========================================
+  # Test 55: StatefulSetReplicasMismatch
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_statefulset_status_replicas{namespace="default", statefulset="mysql"}'
+        values: "3x20"
+      - series: 'kube_statefulset_status_replicas_ready{namespace="default", statefulset="mysql"}'
+        values: "2x20"  # Only 2 of 3 ready
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: StatefulSetReplicasMismatch
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              statefulset: mysql
+
+  # ===========================================
+  # Test 56: StatefulSetGenerationMismatch
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_statefulset_metadata_generation{namespace="default", statefulset="stuck-sts"}'
+        values: "3x20"
+      - series: 'kube_statefulset_status_observed_generation{namespace="default", statefulset="stuck-sts"}'
+        values: "2x20"
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: StatefulSetGenerationMismatch
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              statefulset: stuck-sts
+
+  # ===========================================
+  # Test 57: DaemonSetRolloutStuck
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_daemonset_status_number_ready{namespace="kube-system", daemonset="node-exporter"}'
+        values: "2x20"
+      - series: 'kube_daemonset_status_desired_number_scheduled{namespace="kube-system", daemonset="node-exporter"}'
+        values: "3x20"  # Wants 3 but only 2 ready = 66%
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: DaemonSetRolloutStuck
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: kube-system
+              daemonset: node-exporter
+
+  # ===========================================
+  # Test 58: DaemonSetNotScheduled
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_daemonset_status_desired_number_scheduled{namespace="kube-system", daemonset="fluentd"}'
+        values: "5x15"
+      - series: 'kube_daemonset_status_current_number_scheduled{namespace="kube-system", daemonset="fluentd"}'
+        values: "3x15"  # 2 pods not scheduled
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: DaemonSetNotScheduled
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: kube-system
+              daemonset: fluentd
+
+  # ===========================================
+  # Test 59: DaemonSetMisscheduled
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_daemonset_status_number_misscheduled{namespace="kube-system", daemonset="bad-ds"}'
+        values: "2x10"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: DaemonSetMisscheduled
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: kube-system
+              daemonset: bad-ds
+
+  # ===========================================
+  # Test 60: ReplicaSetReplicasMismatch
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_replicaset_spec_replicas{namespace="default", replicaset="myapp-abc123"}'
+        values: "3x20"
+      - series: 'kube_replicaset_status_ready_replicas{namespace="default", replicaset="myapp-abc123"}'
+        values: "1x20"  # Only 1 of 3 ready
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: ReplicaSetReplicasMismatch
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              replicaset: myapp-abc123
+
+  # ===========================================
+  # Test 61: JobFailed
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_job_status_failed{namespace="default", job_name="backup-job"}'
+        values: "1x5"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: JobFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              job_name: backup-job
+
+  # ===========================================
+  # Test 62: JobSlowCompletion (>1 hour)
+  # ===========================================
+  - interval: 5m
+    input_series:
+      - series: 'kube_job_spec_completions{namespace="default", job_name="slow-job"}'
+        values: "3x15"
+      - series: 'kube_job_status_succeeded{namespace="default", job_name="slow-job"}'
+        values: "1x15"  # Only 1 of 3 complete
+      - series: 'kube_job_status_start_time{namespace="default", job_name="slow-job"}'
+        values: "0x15"  # Started at time 0, running for >1h
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: JobSlowCompletion
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              job_name: slow-job
+
+  # ===========================================
+  # Test 63: CronJobSuspended
+  # ===========================================
+  - interval: 10m
+    input_series:
+      - series: 'kube_cronjob_spec_suspend{namespace="default", cronjob="disabled-cron"}'
+        values: "1x10"  # Suspended for >1 hour
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: CronJobSuspended
+        exp_alerts:
+          - exp_labels:
+              severity: info
+              namespace: default
+              cronjob: disabled-cron
+
+  # ===========================================
+  # Test 65: CronJobLastRunFailed
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_job_status_failed{namespace="default", job_name="backup-cron-1234567890"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: CronJobLastRunFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              job_name: backup-cron-1234567890
+
+  # ===========================================
+  # Negative test: Healthy workloads
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_deployment_spec_replicas{namespace="default", deployment="healthy-app"}'
+        values: "3x20"
+      - series: 'kube_deployment_status_replicas_available{namespace="default", deployment="healthy-app"}'
+        values: "3x20"  # All 3 available
+      - series: 'kube_deployment_metadata_generation{namespace="default", deployment="healthy-app"}'
+        values: "1x20"
+      - series: 'kube_deployment_status_observed_generation{namespace="default", deployment="healthy-app"}'
+        values: "1x20"
+      - series: 'kube_job_status_failed{namespace="default", job_name="good-job"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 18m
+        alertname: DeploymentReplicasMismatch
+        exp_alerts: []
+      - eval_time: 18m
+        alertname: DeploymentGenerationMismatch
+        exp_alerts: []
+      - eval_time: 18m
+        alertname: JobFailed
+        exp_alerts: []

@@ -1,0 +1,179 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: victoria-metrics-stack
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://victoriametrics.github.io/helm-charts/
+    chart: victoria-metrics-k8s-stack
+    targetRevision: 0.25.0
+    helm:
+      releaseName: vm-stack
+      values: |
+        fullnameOverride: vm-stack
+        
+        # =====================
+        # VMCluster (HA Setup)
+        # =====================
+        vmcluster:
+          enabled: true
+          spec:
+            retentionPeriod: "14d"
+            replicationFactor: 2
+            vmstorage:
+              replicaCount: 2
+              resources:
+                requests:
+                  cpu: 250m
+                  memory: 512Mi
+                limits:
+                  cpu: 1
+                  memory: 1Gi
+              storage:
+                volumeClaimTemplate:
+                  spec:
+                    storageClassName: local-path
+                    resources:
+                      requests:
+                        storage: 50Gi
+            vmselect:
+              replicaCount: 2
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+            vminsert:
+              replicaCount: 2
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+        
+        # =====================
+        # VMAgent (Scraping)
+        # =====================
+        vmagent:
+          enabled: true
+          spec:
+            scrapeInterval: 30s
+            externalLabels:
+              cluster: k3s-cluster
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+        
+        # =====================
+        # VMAlert (Rule Evaluation)
+        # =====================
+        vmalert:
+          enabled: true
+          spec:
+            replicaCount: 1
+            evaluationInterval: 30s
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+            notifiers:
+              - url: http://vm-stack-alertmanager.victoria-metrics.svc:9093
+            # Reference to alert rules
+            ruleSelector:
+              matchLabels:
+                app: vmalert
+        
+        # =====================
+        # Alertmanager
+        # =====================
+        alertmanager:
+          enabled: true
+          spec:
+            replicaCount: 1
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+            configSecret: alertmanager-config
+        
+        # =====================
+        # Grafana
+        # =====================
+        grafana:
+          enabled: true
+          sidecar:
+            datasources:
+              enabled: true
+          persistence:
+            enabled: true
+            size: 5Gi
+            storageClassName: local-path
+          adminPassword: "admin"  # Change this!
+          ingress:
+            enabled: false  # Enable if you have ingress controller
+        
+        # =====================
+        # ServiceMonitors for K8s Components
+        # =====================
+        kubelet:
+          enabled: true
+        kubeApiServer:
+          enabled: true
+        kubeControllerManager:
+          enabled: true
+        kubeScheduler:
+          enabled: true
+        kubeEtcd:
+          enabled: true
+        kubeProxy:
+          enabled: true
+        coreDns:
+          enabled: true
+        
+        # =====================
+        # Node Exporter
+        # =====================
+        prometheus-node-exporter:
+          enabled: true
+        
+        # =====================
+        # Kube State Metrics
+        # =====================
+        kube-state-metrics:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: victoria-metrics
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

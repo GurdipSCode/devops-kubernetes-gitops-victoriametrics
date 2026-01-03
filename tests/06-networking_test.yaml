@@ -1,0 +1,246 @@
+# Unit tests for networking alerts (Rules 79-90)
+# Run with: promtool test rules tests/06-networking_test.yaml
+
+evaluation_interval: 1m
+
+rule_files:
+  - ../alert-rules/06-networking.yaml
+
+tests:
+  # ===========================================
+  # Test 79: CoreDNSDown (absent)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'up{job="coredns", instance="coredns:9153"}'
+        values: "1 1 1 _ _ _ _ _ _ _"  # Goes away
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: CoreDNSDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+
+  # ===========================================
+  # Test 80: CoreDNSHighLatency (>100ms)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'coredns_dns_request_duration_seconds_bucket{le="0.01"}'
+        values: "0+10x15"
+      - series: 'coredns_dns_request_duration_seconds_bucket{le="0.05"}'
+        values: "0+30x15"
+      - series: 'coredns_dns_request_duration_seconds_bucket{le="0.1"}'
+        values: "0+50x15"
+      - series: 'coredns_dns_request_duration_seconds_bucket{le="0.25"}'
+        values: "0+90x15"
+      - series: 'coredns_dns_request_duration_seconds_bucket{le="+Inf"}'
+        values: "0+100x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: CoreDNSHighLatency
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+
+  # ===========================================
+  # Test 81: CoreDNSErrorsHigh (>5%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'coredns_dns_responses_total{rcode="SERVFAIL"}'
+        values: "0+10x15"   # 10 failures per minute
+      - series: 'coredns_dns_responses_total{rcode="NOERROR"}'
+        values: "0+90x15"   # 90 successes = 10% error rate
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: CoreDNSErrorsHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+
+  # ===========================================
+  # Test 82: CoreDNSPanicCount
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'coredns_panics_total{instance="coredns:9153"}'
+        values: "0 0 0 0 0 1 1 1 1 1"  # Panic at minute 5
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: CoreDNSPanicCount
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: "coredns:9153"
+
+  # ===========================================
+  # Test 83: TraefikDown (absent)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'up{job="traefik", instance="traefik:8080"}'
+        values: "1 1 1 _ _ _ _ _ _ _"
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: TraefikDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+
+  # ===========================================
+  # Test 84: TraefikHighErrorRate (>5%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'traefik_entrypoint_requests_total{entrypoint="websecure", code="500"}'
+        values: "0+8x15"
+      - series: 'traefik_entrypoint_requests_total{entrypoint="websecure", code="502"}'
+        values: "0+4x15"   # Total 12 errors
+      - series: 'traefik_entrypoint_requests_total{entrypoint="websecure", code="200"}'
+        values: "0+88x15"  # 88 successes = 12% error rate
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: TraefikHighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+
+  # ===========================================
+  # Test 85: TraefikHighLatency (>2s)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'traefik_entrypoint_request_duration_seconds_bucket{entrypoint="websecure", le="0.5"}'
+        values: "0+20x15"
+      - series: 'traefik_entrypoint_request_duration_seconds_bucket{entrypoint="websecure", le="1"}'
+        values: "0+40x15"
+      - series: 'traefik_entrypoint_request_duration_seconds_bucket{entrypoint="websecure", le="2"}'
+        values: "0+60x15"
+      - series: 'traefik_entrypoint_request_duration_seconds_bucket{entrypoint="websecure", le="5"}'
+        values: "0+95x15"
+      - series: 'traefik_entrypoint_request_duration_seconds_bucket{entrypoint="websecure", le="+Inf"}'
+        values: "0+100x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: TraefikHighLatency
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              entrypoint: websecure
+
+  # ===========================================
+  # Test 86: ServiceEndpointsNotReady
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_endpoint_address_not_ready{namespace="default", endpoint="myservice"}'
+        values: "2x15"  # 2 endpoints not ready
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ServiceEndpointsNotReady
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              endpoint: myservice
+
+  # ===========================================
+  # Test 87: ServiceNoEndpoints
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_endpoint_address_available{namespace="default", endpoint="dead-service"}'
+        values: "0x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ServiceNoEndpoints
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              endpoint: dead-service
+
+  # ===========================================
+  # Test 88: IngressWithoutBackend
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'kube_ingress_path{namespace="default", ingress="broken-ingress", service_name=""}'
+        values: "1x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: IngressWithoutBackend
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: default
+              ingress: broken-ingress
+              service_name: ""
+
+  # ===========================================
+  # Test 89: NodeNetworkReceiveErrors
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'node_network_receive_errs_total{instance="node1:9100", device="eth0"}'
+        values: "0+15x15"  # 15 errors per minute
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: NodeNetworkReceiveErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: "node1:9100"
+              device: eth0
+
+  # ===========================================
+  # Test 90: NodeNetworkTransmitErrors
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'node_network_transmit_errs_total{instance="node1:9100", device="eth0"}'
+        values: "0+20x15"  # 20 errors per minute
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: NodeNetworkTransmitErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: "node1:9100"
+              device: eth0
+
+  # ===========================================
+  # Negative test: Healthy networking
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'up{job="coredns", instance="coredns:9153"}'
+        values: "1x20"
+      - series: 'up{job="traefik", instance="traefik:8080"}'
+        values: "1x20"
+      - series: 'coredns_dns_responses_total{rcode="NOERROR"}'
+        values: "0+100x20"
+      - series: 'coredns_dns_responses_total{rcode="SERVFAIL"}'
+        values: "0+1x20"  # Only 1% errors
+      - series: 'traefik_entrypoint_requests_total{entrypoint="websecure", code="200"}'
+        values: "0+99x20"
+      - series: 'traefik_entrypoint_requests_total{entrypoint="websecure", code="500"}'
+        values: "0+1x20"  # Only 1% errors
+      - series: 'kube_endpoint_address_available{namespace="default", endpoint="healthy-svc"}'
+        values: "3x20"  # 3 healthy endpoints
+      - series: 'node_network_receive_errs_total{instance="node1:9100", device="eth0"}'
+        values: "0+1x20"  # Low error rate
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: CoreDNSDown
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: TraefikDown
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: CoreDNSErrorsHigh
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: TraefikHighErrorRate
+        exp_alerts: []

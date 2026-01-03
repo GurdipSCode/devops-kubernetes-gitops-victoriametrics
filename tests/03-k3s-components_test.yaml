@@ -1,0 +1,238 @@
+# Unit tests for K3s components alerts (Rules 36-50)
+# Run with: promtool test rules tests/03-k3s-components_test.yaml
+
+evaluation_interval: 1m
+
+rule_files:
+  - ../alert-rules/03-k3s-components.yaml
+
+tests:
+  # ===========================================
+  # Test 36: K3sServerDown
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'up{job="k3s-server", instance="server1:6443"}'
+        values: "1 1 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: K3sServerDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: k3s-server
+              instance: "server1:6443"
+
+  # ===========================================
+  # Test 37: K3sAgentDown
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'up{job="kubelet", instance="agent1:10250"}'
+        values: "1 1 0 0 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: K3sAgentDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: kubelet
+              instance: "agent1:10250"
+
+  # ===========================================
+  # Test 38: KubeAPIServerDown (absent)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'up{job="apiserver", instance="api:6443"}'
+        values: "1 1 1 _ _ _ _ _ _ _"  # Goes away after minute 3
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: KubeAPIServerDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+
+  # ===========================================
+  # Test 39: KubeAPIServerHighLatency
+  # ===========================================
+  - interval: 1m
+    input_series:
+      # Simulate high latency histogram buckets
+      - series: 'apiserver_request_duration_seconds_bucket{verb="GET", le="0.1"}'
+        values: "0+10x15"
+      - series: 'apiserver_request_duration_seconds_bucket{verb="GET", le="0.5"}'
+        values: "0+20x15"
+      - series: 'apiserver_request_duration_seconds_bucket{verb="GET", le="1"}'
+        values: "0+50x15"
+      - series: 'apiserver_request_duration_seconds_bucket{verb="GET", le="2"}'
+        values: "0+100x15"
+      - series: 'apiserver_request_duration_seconds_bucket{verb="GET", le="+Inf"}'
+        values: "0+100x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: KubeAPIServerHighLatency
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              verb: GET
+
+  # ===========================================
+  # Test 40: KubeAPIServerErrors (>3%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'apiserver_request_total{code="500"}'
+        values: "0+5x15"   # 5 errors per minute
+      - series: 'apiserver_request_total{code="200"}'
+        values: "0+95x15"  # 95 successes = 5% error rate
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: KubeAPIServerErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+
+  # ===========================================
+  # Test 41: KubeAPIServerCriticalErrors (>10%)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'apiserver_request_total{code="503"}'
+        values: "0+15x10"  # 15 errors per minute
+      - series: 'apiserver_request_total{code="200"}'
+        values: "0+85x10"  # 85 successes = 15% error rate
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: KubeAPIServerCriticalErrors
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+
+  # ===========================================
+  # Test 42: KubeletDown
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'up{job="kubelet", instance="node1:10250"}'
+        values: "1 1 0 0 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: KubeletDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: kubelet
+              instance: "node1:10250"
+
+  # ===========================================
+  # Test 45: KubeControllerManagerDown (absent)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'up{job="kube-controller-manager", instance="cm:10257"}'
+        values: "1 1 1 _ _ _ _ _ _ _"
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: KubeControllerManagerDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+
+  # ===========================================
+  # Test 46: KubeSchedulerDown (absent)
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'up{job="kube-scheduler", instance="sched:10259"}'
+        values: "1 1 1 _ _ _ _ _ _ _"
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: KubeSchedulerDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+
+  # ===========================================
+  # Test 48: KubeSchedulerPendingPods
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'scheduler_pending_pods{queue="active"}'
+        values: "15x15"  # 15 pending pods
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: KubeSchedulerPendingPods
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+
+  # ===========================================
+  # Test 49: EtcdHighLatency
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'etcd_disk_wal_fsync_duration_seconds_bucket{le="0.1"}'
+        values: "0+10x15"
+      - series: 'etcd_disk_wal_fsync_duration_seconds_bucket{le="0.5"}'
+        values: "0+30x15"
+      - series: 'etcd_disk_wal_fsync_duration_seconds_bucket{le="1"}'
+        values: "0+80x15"
+      - series: 'etcd_disk_wal_fsync_duration_seconds_bucket{le="+Inf"}'
+        values: "0+100x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: EtcdHighLatency
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+
+  # ===========================================
+  # Test 50: EtcdHighCommitLatency
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'etcd_disk_backend_commit_duration_seconds_bucket{le="0.05"}'
+        values: "0+10x15"
+      - series: 'etcd_disk_backend_commit_duration_seconds_bucket{le="0.1"}'
+        values: "0+20x15"
+      - series: 'etcd_disk_backend_commit_duration_seconds_bucket{le="0.25"}'
+        values: "0+40x15"
+      - series: 'etcd_disk_backend_commit_duration_seconds_bucket{le="0.5"}'
+        values: "0+90x15"
+      - series: 'etcd_disk_backend_commit_duration_seconds_bucket{le="+Inf"}'
+        values: "0+100x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: EtcdHighCommitLatency
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+
+  # ===========================================
+  # Negative test: Healthy components
+  # ===========================================
+  - interval: 1m
+    input_series:
+      - series: 'up{job="apiserver", instance="api:6443"}'
+        values: "1x20"
+      - series: 'up{job="kubelet", instance="node1:10250"}'
+        values: "1x20"
+      - series: 'up{job="kube-scheduler", instance="sched:10259"}'
+        values: "1x20"
+      - series: 'up{job="kube-controller-manager", instance="cm:10257"}'
+        values: "1x20"
+      - series: 'apiserver_request_total{code="200"}'
+        values: "0+100x20"
+      - series: 'apiserver_request_total{code="500"}'
+        values: "0+1x20"  # Only 1% errors
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: KubeAPIServerDown
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: KubeSchedulerDown
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: KubeAPIServerErrors
+        exp_alerts: []

@@ -1,0 +1,146 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: k3s-storage
+  namespace: victoria-metrics
+  labels:
+    app: vmalert
+spec:
+  groups:
+    - name: k3s-storage
+      interval: 30s
+      rules:
+        # 66
+        - alert: PersistentVolumePending
+          expr: kube_persistentvolume_status_phase{phase="Pending"} > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PersistentVolume {{ $labels.persistentvolume }} is pending"
+            description: "PV has been pending for more than 10 minutes"
+
+        # 67
+        - alert: PersistentVolumeFailed
+          expr: kube_persistentvolume_status_phase{phase="Failed"} > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "PersistentVolume {{ $labels.persistentvolume }} has failed"
+            description: "PV is in Failed state"
+
+        # 68
+        - alert: PersistentVolumeClaimPending
+          expr: kube_persistentvolumeclaim_status_phase{phase="Pending"} > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is pending"
+            description: "PVC has been pending for more than 10 minutes"
+
+        # 69
+        - alert: PersistentVolumeClaimLost
+          expr: kube_persistentvolumeclaim_status_phase{phase="Lost"} > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is lost"
+            description: "PVC bound PV has been deleted"
+
+        # 70
+        - alert: PersistentVolumeHighUsage
+          expr: |
+            kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes * 100 > 80
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} high usage"
+            description: "PVC usage is {{ $value | printf \"%.1f\" }}%"
+
+        # 71
+        - alert: PersistentVolumeCriticalUsage
+          expr: |
+            kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes * 100 > 90
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} critical usage"
+            description: "PVC usage is {{ $value | printf \"%.1f\" }}%"
+
+        # 72
+        - alert: PersistentVolumeWillFillIn4Days
+          expr: predict_linear(kubelet_volume_stats_available_bytes[6h], 4*24*3600) < 0
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} will fill soon"
+            description: "PVC is predicted to run out of space within 4 days"
+
+        # 73
+        - alert: PersistentVolumeInodeHigh
+          expr: |
+            kubelet_volume_stats_inodes_used / kubelet_volume_stats_inodes * 100 > 80
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} high inode usage"
+            description: "PVC inode usage is {{ $value | printf \"%.1f\" }}%"
+
+        # 74
+        - alert: LocalPathProvisionerDown
+          expr: up{job=~".*local-path.*"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "K3s local-path-provisioner is down"
+            description: "Local path provisioner has been down for 5 minutes"
+
+        # 75
+        - alert: NodeDiskIOHigh
+          expr: rate(node_disk_io_time_seconds_total[5m]) > 0.9
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High disk I/O on {{ $labels.instance }} ({{ $labels.device }})"
+            description: "Disk I/O utilization is {{ $value | printf \"%.1f\" }}%"
+
+        # 76
+        - alert: NodeDiskReadLatencyHigh
+          expr: |
+            rate(node_disk_read_time_seconds_total[5m]) / rate(node_disk_reads_completed_total[5m]) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High disk read latency on {{ $labels.instance }} ({{ $labels.device }})"
+            description: "Average read latency is {{ $value | printf \"%.3f\" }}s"
+
+        # 77
+        - alert: NodeDiskWriteLatencyHigh
+          expr: |
+            rate(node_disk_write_time_seconds_total[5m]) / rate(node_disk_writes_completed_total[5m]) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High disk write latency on {{ $labels.instance }} ({{ $labels.device }})"
+            description: "Average write latency is {{ $value | printf \"%.3f\" }}s"
+
+        # 78
+        - alert: StorageClassWithoutProvisioner
+          expr: kube_storageclass_info{provisioner="kubernetes.io/no-provisioner"} > 0
+          for: 0m
+          labels:
+            severity: info
+          annotations:
+            summary: "StorageClass {{ $labels.storageclass }} has no dynamic provisioner"
+            description: "StorageClass uses manual provisioning"
