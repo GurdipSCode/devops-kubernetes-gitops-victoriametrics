@@ -1,4 +1,4 @@
-# VictoriaMetrics K3s Monitoring Stack
+# devops-kubernetes-gitops-victoriametrics
 
 Complete monitoring stack for K3s clusters with 100 alert rules and ArgoCD deployment.
 
