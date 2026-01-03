@@ -1,0 +1,241 @@
+# =============================================================================
+# ArgoCD GitOps Repository .gitignore
+# =============================================================================
+
+# =============================================================================
+# SECRETS - NEVER COMMIT
+# =============================================================================
+# Kubernetes secrets
+secrets.yaml
+*-secret.yaml
+*-secrets.yaml
+secret.yaml
+secret-*.yaml
+*.secret.yaml
+
+# Sealed secrets source files (sealed files ARE safe to commit)
+!*-sealed.yaml
+!sealed-*.yaml
+
+# Environment files with secrets
+.env
+.env.*
+*.env
+!.env.example
+
+# Key files
+*.key
+*.pem
+*.crt
+*.cer
+*.p12
+*.pfx
+*.jks
+
+# Kubeconfig
+kubeconfig
+kubeconfig.yaml
+.kube/
+
+# Cloud credentials
+credentials
+credentials.json
+.aws/
+.gcloud/
+.azure/
+
+# Tokens
+*token*
+!*token*.example
+
+# =============================================================================
+# HELM
+# =============================================================================
+# Helm dependencies (pulled at deploy time)
+charts/
+Chart.lock
+
+# Helm packages
+*.tgz
+
+# Helm cache
+.helm/
+
+# =============================================================================
+# KUSTOMIZE
+# =============================================================================
+# Kustomize build output
+kustomize-build/
+output/
+
+# =============================================================================
+# ARGOCD
+# =============================================================================
+# ArgoCD local config
+.argocd/
+
+# Application manifests with inline secrets
+# (use external secrets instead)
+
+# =============================================================================
+# KUBERNETES
+# =============================================================================
+# Generated manifests
+manifests-generated/
+rendered/
+
+# Dry-run output
+*-dry-run.yaml
+
+# =============================================================================
+# TERRAFORM (if using with ArgoCD)
+# =============================================================================
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+crash.log
+
+# =============================================================================
+# ANSIBLE (if using with ArgoCD)
+# =============================================================================
+*.retry
+inventory/hosts
+vault-password
+
+# =============================================================================
+# IDE & EDITORS
+# =============================================================================
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim
+*.swp
+*.swo
+*~
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+.#*
+
+# Sublime
+*.sublime-project
+*.sublime-workspace
+
+# =============================================================================
+# OS FILES
+# =============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+.directory
+
+# =============================================================================
+# BUILD & TEMP
+# =============================================================================
+# Build directories
+build/
+dist/
+out/
+target/
+
+# Temp files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+tmp/
+temp/
+
+# Logs
+*.log
+logs/
+
+# =============================================================================
+# TESTING
+# =============================================================================
+# Test output
+test-results/
+coverage/
+.nyc_output/
+
+# promtool/vmalert-tool output
+test-output/
+
+# =============================================================================
+# DOCUMENTATION
+# =============================================================================
+# Generated docs
+site/
+docs/_build/
+
+# =============================================================================
+# CI/CD LOCAL
+# =============================================================================
+# GitHub Actions local
+.act/
+
+# GitLab CI local
+.gitlab-ci-local/
+
+# =============================================================================
+# LANGUAGE SPECIFIC (if scripts exist)
+# =============================================================================
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+pip-log.txt
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Go
+vendor/
+go.sum
+
+# =============================================================================
+# BACKUP FILES
+# =============================================================================
+*.orig
+*.rej
+*.bak
+*.backup
+*~
+
+# =============================================================================
+# KEEP EXAMPLE/TEMPLATE FILES
+# =============================================================================
+!*.example
+!*.template
+!*.sample
+!EXAMPLE-*
+!TEMPLATE-*
